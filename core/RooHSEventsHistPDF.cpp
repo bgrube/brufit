@@ -229,7 +229,7 @@ namespace HS{
 	  his1->SetBinContent(ix+1,bmean);
 	}
       if(fUseEvWeights) cout<<fEvWeights[0]<<" "<<fEvWeights[1]<<endl;
-      his1->Smooth();
+      // his1->Smooth();
       //Fill first y bin of 2D hist (no smearing)
       for(Int_t jtemp=1;jtemp<=fRHist->GetNbinsX();jtemp++)//First alpha bin, no semaring!
 	fRHist->Fill(fRHist->GetXaxis()->GetBinCenter(jtemp),fRHist->GetYaxis()->GetBinCenter(1),his1->GetBinContent(jtemp));
@@ -265,7 +265,7 @@ namespace HS{
 	}
     
       }
-      fRHist->Smooth();//some additional smoothing
+      // fRHist->Smooth();//some additional smoothing
 
       //Store max value of distributions for scaling around
       // fMean=fRHist->GetMean();
