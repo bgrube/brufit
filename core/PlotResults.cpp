@@ -1,6 +1,7 @@
 #include "PlotResults.h"
 #include "RooHSEventsPDF.h"
 #include "RooMcmc.h"
+#include <RooPlot.h>
 #include <RooMsgService.h>
 #include <TCanvas.h>
 #include <TROOT.h>
@@ -47,18 +48,24 @@ namespace HS{
 
 	if(pdfs.getSize()>1) //only draw components if >1
 	  for(Int_t ic=0;ic<pdfs.getSize();ic++)
-	    model->plotOn(frame,Components(pdfs[ic]),LineStyle(kDashed),LineColor(ic%8+1),Precision(1E-2));
+	    // model->plotOn(frame,Components(pdfs[ic]),LineStyle(kDashed),LineColor(ic%8+1),Precision(1E-2));
+	  model->plotOn(frame,Components(pdfs[ic]),LineStyle(kDashed),LineColor(ic%8+1),Precision(1E-6));
 
 	
-      	model->plotOn(frame,LineColor(kRed)) ;
+      	// model->plotOn(frame,LineColor(kRed)) ;
+	model->plotOn(frame,LineColor(kRed),Precision(1E-6)) ;
 
 	//	model->getParameters(data)->Print("v");
 	//	std::cout<<"PlotOn  "<<model->expectedEvents(model->getObservables(data))<<std::endl;
        	//model->plotOn(frame,LineColor(kRed),Precision(4E-2)) ;
 	
+	// model->paramOn(frame,
+	// 	       Layout(0.1, 0.2, 0.9),
+	// 	       Format("NE",AutoPrecision(1))); //show fit parameters
 	model->paramOn(frame,
-		       Layout(0.1, 0.2, 0.9),
-		       Format("NE",AutoPrecision(1))); //show fit parameters
+		       Layout(0.1, 0.4, 0.9),
+		       Format("NEU",AutoPrecision(2)),
+		       ShowConstants()); //show fit parameters
 	
 	
 	frame->SetTitle(TString("Fit components for ")+var->GetName());
@@ -76,14 +83,17 @@ namespace HS{
 	halfCanvas->Divide(1,2);
 	halfCanvas->cd(1);
 	
-	auto hres=roohist_uptr(frame->residHist());
+	// auto hres=roohist_uptr(frame->residHist());
+	// switch off averaging, otherwise fit of MC data with true templates does not show perfect agreement
+	auto hres=roohist_uptr(frame->residHist(nullptr, nullptr, false, false));
 	hres->Draw();
      	fRooHists.push_back(std::move(hres));//keep it live
 
 	//Pull distributions
 	halfCanvas->cd(2);
 	
-	auto hpull=roohist_uptr(frame->pullHist());
+	// auto hpull=roohist_uptr(frame->pullHist());
+	auto hpull=roohist_uptr(frame->pullHist(nullptr, nullptr, false));
 	hpull->Draw();
 	fRooHists.push_back(std::move(hpull));//keep it live
 	//////////////////////////////////////////////
