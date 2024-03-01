@@ -45,7 +45,9 @@ namespace HS{
       //get dataset fFiti
       fCurrDataSet=std::move(Data().Get(fFiti));
 
-      if(fCurrDataSet->numEntries()==0){
+      cout<<"fCurrDataSet->numEntries() = "<<fCurrDataSet->numEntries()<<endl;
+      // if(fCurrDataSet->numEntries()==0){
+      if(fCurrDataSet->numEntries()<10){  // use higher threshold to remove bins that will fail for sure
 	cout<<"WARNING FitManager::Run no entries in dataset for this bin will move to next...."<<endl;
 	return kFALSE;
       }
@@ -74,8 +76,9 @@ namespace HS{
       }
       
       //create extended max likelihood pdf
-      // std::cout<<"DEBUG FitManager::Run()"<<std::endl;fCurrSetup->Parameters().Print("v");
+      std::cout<<"DEBUG FitManager::Run()"<<std::endl;fCurrSetup->Parameters().Print("v");
       fCurrSetup->TotalPDF();
+		  fCurrSetup->FitOptions().Print("");
       FitTo(); 
 
       return kTRUE;
