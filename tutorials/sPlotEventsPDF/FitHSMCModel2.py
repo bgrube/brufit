@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
 
+import functools
+import math
 
 import ROOT
+
+
+# always flush print() to reduce garbling of log files due to buffering
+print = functools.partial(print, flush = True)
 
 
 def plotDataHists(
   dataFileName,
   sigFileName,
   bkgFileName,
+  pdfFileName = "data.pdf",
 ):
   histDef = (";m_{miss} [GeV]", 100, 0, 10)
   dfData = ROOT.RDataFrame("MyModel", dataFileName)
@@ -20,7 +27,6 @@ def plotDataHists(
   histTemplBkg = dfTemplBkg.Histo1D(ROOT.RDF.TH1DModel("mMissTemplBkg", *histDef), "Mmiss")
 
   # draw histograms
-  pdfFileName = "data.pdf"
   hists = (histData, histDataSig, histTemplSig, histDataBkg, histTemplBkg)
   canv = ROOT.TCanvas()
   ROOT.gPad.Print(pdfFileName + "[")
@@ -61,6 +67,7 @@ def performFit(
     #   * shifted by an offset `off_Sig`; initial offset 0, allowed range [-2, +2]
     #   * scaled along the x axis by a factor `scale_Sig`; initial scale 1, allowed range [0.8, 1.2]
     # RF.SetUp().FactoryPDF("RooHSEventsHistPDF::Signal(Mmiss, smear_Sig[0, 0, 20], off_Sig[0, -2, 2], scale_Sig[1, 0.8, 1.2])")
+    # RF.SetUp().FactoryPDF("RooHSEventsHistPDF::Signal(Mmiss, smear_Sig[0], off_Sig[0], scale_Sig[1, 0.8, 1.2])")
     RF.SetUp().FactoryPDF("RooHSEventsHistPDF::Signal(Mmiss, smear_Sig[0], off_Sig[0], scale_Sig[1])")
     # load data from which histogram PDFs are constructed
     RF.LoadSimulated("MyModel", sigFileName, "Signal")  # tree name, file name, PDF name
@@ -80,50 +87,102 @@ def performFit(
   # perform fit and plot fit result
   ROOT.Here.Go(RF)
 
-  # plot fit result
+  # get fitted yields
   fitResultFile = ROOT.TFile.Open(f"{outputDir}/ResultsHSMinuit2.root", "READ")
+  fitResult = fitResultFile.Get("MinuitResult")
+  fitPars   = fitResult.floatParsFinal()
+  yieldVals = {"Yld_Signal": None, "Yld_BG": None}
+  for fitParName in yieldVals:
+    fitParIndex = fitPars.index(fitParName)
+    if fitParIndex < 0:
+      yieldVals[fitParName] = (0, 0)
+    else:
+      fitPar = fitPars[fitParIndex]
+      yieldVals[fitParName] = (fitPar.getVal(), fitPar.getError())
+
+  # plot fit result
   canvName = f"_Mmiss"
   canv = fitResultFile.Get(canvName)
   canv.SaveAs(f"{outputDir}/ResultsHSMinuit2.pdf")
   fitResultFile.Close()
+
+  return yieldVals
+
+
+def plotPulls(
+  yieldVals,
+  yieldValsTruth,
+  outputDir,
+):
+  yieldNames = yieldVals[0].keys()
+  for yieldName in yieldNames:
+    canv = ROOT.TCanvas()
+    histPulls = ROOT.TH1D(f"histPulls_{yieldName}", ";(#hat{Y} - Y_{True}) / #hat{#sigma}_{Y};Count", 50, -5, 5)
+    for iYield, yieldVal in enumerate(yieldVals):
+      if yieldVal[yieldName][1] == 0:
+        continue
+      pull = (yieldVal[yieldName][0] - yieldValsTruth[iYield][yieldName]) / yieldVal[yieldName][1]
+      histPulls.Fill(pull)
+    histPulls.Draw()
+    canv.SaveAs(f"{outputDir}/pulls_{yieldName}.pdf")
 
 
 if __name__ == "__main__":
   ROOT.gROOT.SetBatch(True)
   ROOT.gROOT.ProcessLine(".x ${BRUFIT}/macros/LoadBru.C")
 
+  nmbSamples   = 500
+  nmbEvents    = 100000  # defined in Model1.C
   dataFileName = "Data.root"
-  sigFileName  = "SigData.root"
-  bkgFileName  = "BGData.root"
+  sigFileName  = f"Sig{dataFileName}"
+  bkgFileName  = f"BG{dataFileName}"
 
-  # plotDataHists(dataFileName, sigFileName, bkgFileName)
+  yieldValsSig   = []
+  yieldValsBkg   = []
+  yieldVals      = []
+  yieldValsTruth = []
+  ROOT.gROOT.LoadMacro("Model1.C")
+  for iSample in range(nmbSamples):
+    print(f"Performing fit {iSample + 1} of {nmbSamples}.")
+    ROOT.Model1(dataFileName)
+    # plotDataHists(dataFileName, sigFileName, bkgFileName, "data.pdf")
+    yieldValsTruth.append({
+      "Yld_Signal": ROOT.RDataFrame("MyModel", sigFileName).Count().GetValue(),
+      "Yld_BG"    : ROOT.RDataFrame("MyModel", bkgFileName).Count().GetValue(),
+    })
+    assert math.isclose(yieldValsTruth[-1]["Yld_Signal"] + yieldValsTruth[-1]["Yld_BG"], nmbEvents)
 
-  # fit signal with true template
-  performFit(
-    dataFileName = sigFileName,
-    sigFileName  = sigFileName,
-    bkgFileName  = None,
-    useSig       = True,
-    useBkg       = False,
-    outputDir    = "outSig",
-  )
-  # fit background with true template
-  performFit(
-    dataFileName = bkgFileName,
-    sigFileName  = None,
-    bkgFileName  = bkgFileName,
-    useSig       = False,
-    useBkg       = True,
-    outputDir    = "outBkg",
-  )
-  # fit total distribution with true templates
-  performFit(
-    dataFileName = dataFileName,
-    sigFileName  = sigFileName,
-    bkgFileName  = bkgFileName,
-    useSig       = True,
-    useBkg       = True,
-    outputDir    = "out",
-  )
+    # fit signal with true template
+    yieldValsSig.append(performFit(
+      dataFileName = sigFileName,
+      sigFileName  = sigFileName,
+      bkgFileName  = None,
+      useSig       = True,
+      useBkg       = False,
+      outputDir    = "outSig",
+    ))
+    # fit background with true template
+    yieldValsBkg.append(performFit(
+      dataFileName = bkgFileName,
+      sigFileName  = None,
+      bkgFileName  = bkgFileName,
+      useSig       = False,
+      useBkg       = True,
+      outputDir    = "outBkg",
+    ))
+    # fit total distribution with true templates
+    yieldVals.append(performFit(
+      dataFileName = dataFileName,
+      sigFileName  = sigFileName,
+      bkgFileName  = bkgFileName,
+      useSig       = True,
+      useBkg       = True,
+      outputDir    = "out",
+    ))
+    print()
+
+  plotPulls(yieldValsSig, yieldValsTruth, outputDir = "outSig")
+  plotPulls(yieldValsBkg, yieldValsTruth, outputDir = "outBkg")
+  plotPulls(yieldVals,    yieldValsTruth, outputDir = "out")
 
   print("Finished successfully")
