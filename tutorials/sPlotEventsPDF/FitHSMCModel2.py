@@ -131,24 +131,33 @@ if __name__ == "__main__":
   ROOT.gROOT.SetBatch(True)
   ROOT.gROOT.ProcessLine(".x ${BRUFIT}/macros/LoadBru.C")
 
-  nmbSamples   = 500
+  nmbSamples   = 500     # number of statistically independent samples to generate
   nmbEvents    = 100000  # defined in Model1.C
+  fitTruth     = True    # if set, the true templates are used for the fit of every sample; the fit should hence match the data perfectly
   dataFileName = "Data.root"
-  sigFileName  = f"Sig{dataFileName}"
-  bkgFileName  = f"BG{dataFileName}"
+
+  ROOT.gROOT.LoadMacro("Model1.C")
+  if fitTruth:
+    sigFileName  = f"Sig{dataFileName}"
+    bkgFileName  = f"BG{dataFileName}"
+  else:
+    sigFileName  = f"SigTempl{dataFileName}"
+    bkgFileName  = f"BGTempl{dataFileName}"
+    ROOT.Model1(f"Templ{dataFileName}")  # generate independent data from which templates are taken; use same template for all fits
 
   yieldValsSig   = []
   yieldValsBkg   = []
   yieldVals      = []
   yieldValsTruth = []
-  ROOT.gROOT.LoadMacro("Model1.C")
   for iSample in range(nmbSamples):
     print(f"Performing fit {iSample + 1} of {nmbSamples}.")
-    ROOT.Model1(dataFileName)
+    ROOT.Model1(dataFileName)  # generate data to fit; if fitTruth is True templates are taken from the same file
     # plotDataHists(dataFileName, sigFileName, bkgFileName, "data.pdf")
+
+    dfData = ROOT.RDataFrame("MyModel", dataFileName)
     yieldValsTruth.append({
-      "Yld_Signal": ROOT.RDataFrame("MyModel", sigFileName).Count().GetValue(),
-      "Yld_BG"    : ROOT.RDataFrame("MyModel", bkgFileName).Count().GetValue(),
+      "Yld_Signal": dfData.Filter("Sig == 1" ).Count().GetValue(),
+      "Yld_BG"    : dfData.Filter("Sig == -1").Count().GetValue(),
     })
     assert math.isclose(yieldValsTruth[-1]["Yld_Signal"] + yieldValsTruth[-1]["Yld_BG"], nmbEvents)
 
